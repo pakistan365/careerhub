@@ -3,6 +3,8 @@
 // Reads from CMS_DATA (cms-data.js) — no external fetch needed
 // ============================================================
 
+const CMS_DATA = (typeof window !== 'undefined' && window.CMS_DATA) ? window.CMS_DATA : {};
+
 // ── Utility: fetch sheet data from embedded CMS_DATA ────────
 function fetchSheet(sheetName) {
   return Promise.resolve((CMS_DATA[sheetName] || []).slice());
