@@ -1,4 +1,4 @@
-const CMS_DATA = {
+window.CMS_DATA_FALLBACK = {
   "Scholarships": [
     {
       "id": 1,
