@@ -56,18 +56,28 @@ const SHEET_GIDS = {
 };
 
 function sheetURLsByGid(gid) {
+  // FORCE published CSV (most stable)
+  if (SHEET_PUBLISHED_ID) {
+    return [
+      `https://docs.google.com/spreadsheets/d/e/${SHEET_PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`
+    ];
+  }
+
   return SHEET_BASES.map(base =>
-    base.includes('/gviz/tq')
-      ? `${base}?tqx=out:csv&gid=${gid}`
-      : `${base}?gid=${gid}&single=true&output=csv`
+    `${base}?tqx=out:csv&gid=${gid}`
   );
 }
 
 function sheetURLsByName(sheetName) {
+  // ALWAYS use published CSV (no auth issues, no gviz issues)
+  if (SHEET_PUBLISHED_ID) {
+    return [
+      `https://docs.google.com/spreadsheets/d/e/${SHEET_PUBLISHED_ID}/pub?output=csv&sheet=${encodeURIComponent(sheetName)}`
+    ];
+  }
+
   return SHEET_BASES.map(base =>
-    base.includes('/gviz/tq')
-      ? `${base}?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`
-      : `${base}?single=true&output=csv&sheet=${encodeURIComponent(sheetName)}`
+    `${base}?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`
   );
 }
 
