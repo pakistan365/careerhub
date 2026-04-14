@@ -312,6 +312,15 @@ function loadNotifications() {
   track.innerHTML = `<span>${html}&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;${html}</span>`;
 }
 
+// ── AI chatbot fallback loader (ensures toggle on every page) ─
+function ensureChatbotLoaded() {
+  if (document.querySelector('script[src*="gemini-chatbot.js"]')) return;
+  const script = document.createElement('script');
+  script.src = 'js/gemini-chatbot.js';
+  script.defer = true;
+  (document.body || document.head || document.documentElement).appendChild(script);
+}
+
 // ── Navbar toggle ─────────────────────────────────────────────
 function toggleMenu() {
   document.getElementById('navLinks')?.classList.toggle('open');
