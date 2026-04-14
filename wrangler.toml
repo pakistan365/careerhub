@@ -1,0 +1,8 @@
+name = "careerhub"
+compatibility_date = "2026-04-13"
+pages_build_output_dir = "."
+
+# Add GEMINI_API_KEY as a secret in:
+# Cloudflare Pages → Your Project → Settings → Environment Variables
+# Variable name: GEMINI_API_KEY
+# Value: your-gemini-api-key-here
