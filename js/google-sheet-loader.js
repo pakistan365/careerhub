@@ -377,6 +377,31 @@ function fireReady() {
   document.dispatchEvent(new CustomEvent('cmsReady', { detail: window.CMS_DATA }));
 }
 
+let fallbackScriptPromise = null;
+function loadFallbackScript() {
+  if (window.CMS_DATA_FALLBACK) return Promise.resolve(true);
+  if (fallbackScriptPromise) return fallbackScriptPromise;
+
+  fallbackScriptPromise = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = 'js/cms-data.js';
+    script.onload = () => resolve(Boolean(window.CMS_DATA_FALLBACK));
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+  return fallbackScriptPromise;
+}
+
+async function hydrateFromFallback() {
+  const loaded = await loadFallbackScript();
+  if (!loaded || !window.CMS_DATA_FALLBACK) return false;
+  const fallback = window.CMS_DATA_FALLBACK;
+  ['Scholarships', 'Jobs', 'Internships', 'Exams', 'Books', 'Notifications'].forEach((key) => {
+    window.CMS_DATA[key] = Array.isArray(fallback[key]) ? fallback[key] : [];
+  });
+  return true;
+}
+
 // ── Main loader ───────────────────────────────────────────────
 async function loadAllSheets() {
   showBanner('⏳ Loading live data…', 'linear-gradient(90deg,#0f766e,#0d9488)');
@@ -417,13 +442,19 @@ async function loadAllSheets() {
   });
 
   if (loadedCount === 0) {
-    showBanner(
-      `⚠️ Could not load data. Your GIDs may be wrong. ` +
-      `Open your Google Sheet, click each tab, copy the number after #gid= in the URL, ` +
-      `and update SHEET_GIDS in js/google-sheet-loader.js`,
-      '#dc2626'
-    );
-    setTimeout(hideBanner, 8000);
+    const usingFallback = await hydrateFromFallback();
+    if (usingFallback) {
+      showBanner('⚠️ Live Google Sheet unavailable — showing local fallback data.', '#b45309');
+      setTimeout(hideBanner, 5000);
+    } else {
+      showBanner(
+        `⚠️ Could not load data. Your GIDs may be wrong. ` +
+        `Open your Google Sheet, click each tab, copy the number after #gid= in the URL, ` +
+        `and update SHEET_GIDS in js/google-sheet-loader.js`,
+        '#dc2626'
+      );
+      setTimeout(hideBanner, 8000);
+    }
   } else {
     hideBanner();
   }
