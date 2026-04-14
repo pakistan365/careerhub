@@ -245,11 +245,11 @@ function injectChatbot() {
   if (document.getElementById('chatbotPanel')) return;
 
   document.body.insertAdjacentHTML('beforeend', `
-    <button class="chatbot-enable-btn" id="chatbotEnableBtn" onclick="toggleAIEnabled()" aria-label="Enable AI Adviser" title="Enable AI Adviser">
+    <button class="chatbot-enable-btn" id="chatbotEnableBtn" aria-label="Enable AI Adviser" title="Enable AI Adviser">
     🤖 Enable AI
   </button>
-  <button class="chatbot-toggle-btn" id="chatbotBtn" onclick="toggleChatbot()" aria-label="Open AI Chat" title="CareerHub AI">
-    <svg class="chat-icon-open" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <button class="chatbot-toggle-btn" id="chatbotBtn" aria-label="Open AI Chat" title="CareerHub AI">
+  <svg class="chat-icon-open" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     <svg class="chat-icon-close" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     <span class="chatbot-badge">AI</span>
   </button>
@@ -263,7 +263,7 @@ function injectChatbot() {
           <span class="chatbot-status">● Online</span>
         </div>
       </div>
-      <button class="chatbot-close-btn" onclick="toggleChatbot()" aria-label="Close chat">✕</button>
+      <button class="chatbot-close-btn" id="chatbotCloseBtn" aria-label="Close chat">✕</button>
     </div>
     <div class="chatbot-messages" id="chatbotMessages" role="log" aria-live="polite"></div>
     <div class="chatbot-suggestions" id="chatbotSuggestions">
@@ -276,14 +276,28 @@ function injectChatbot() {
       <input type="text" id="chatbotInput" placeholder="Ask me anything…" 
              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}" 
              maxlength="500" autocomplete="off"/>
-      <button onclick="sendChat()" class="chatbot-send-btn" aria-label="Send message">
+      <button id="chatbotSendBtn" class="chatbot-send-btn" aria-label="Send message">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>
-        <div class="chatbot-footer">
-      <button class="chatbot-mini-link" onclick="toggleAIEnabled()">Hide AI on this device</button>
+    <div class="chatbot-footer">
+      <button class="chatbot-mini-link" id="chatbotHideBtn">Hide AI on this device</button>
     </div>
   </div>`);
+}
+
+function bindChatbotEvents() {
+  const toggleBtn = document.getElementById('chatbotBtn');
+  const closeBtn = document.getElementById('chatbotCloseBtn');
+  const sendBtn = document.getElementById('chatbotSendBtn');
+  const enableBtn = document.getElementById('chatbotEnableBtn');
+  const hideBtn = document.getElementById('chatbotHideBtn');
+
+  if (toggleBtn) toggleBtn.addEventListener('click', toggleChatbot);
+  if (closeBtn) closeBtn.addEventListener('click', toggleChatbot);
+  if (sendBtn) sendBtn.addEventListener('click', sendChat);
+  if (enableBtn) enableBtn.addEventListener('click', toggleAIEnabled);
+  if (hideBtn) hideBtn.addEventListener('click', toggleAIEnabled);
 }
 
 // ── Styles ────────────────────────────────────────────────────
@@ -333,7 +347,7 @@ function injectChatbotStyles() {
       transition: opacity 0.3s ease, transform 0.3s ease;
       border: 1px solid var(--border, #e5e7eb);
     }
-    .chatbot-panel.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: all; }
+    .chatbot-panel.open { display: flex; opacity: 1; transform: translateY(0) scale(1); pointer-events: all; }
     .chatbot-header {
       background: linear-gradient(135deg, #6366f1, #8b5cf6);
       color: white; padding: 14px 16px;
@@ -447,8 +461,8 @@ window.toggleAIEnabled = toggleAIEnabled;
 function initChatbot() {
   injectChatbotStyles();
   injectChatbot();
+  bindChatbotEvents();
   setAIEnabled(isAIEnabled());
-});
 }
 
 if (document.readyState === 'loading') {
