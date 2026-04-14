@@ -25,12 +25,16 @@
 // common GID values (0–7 and 000000000–777777777 patterns).
 // ============================================================
 
-// You can use EITHER of these IDs:
+// Primary published CSV URL provided by CMS owner.
+// Keep this updated whenever the sheet is republished.
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRkygCswWJqKnQPsVnj27ijDHwELm27oQpG7WRjGDzB5DcZqDjcTKUUp_7c3V_baAhb3U7YbInaJuQ_/pub?output=csv';
+
+// You can also use EITHER of these IDs:
 // 1) Published ID from URL like: /spreadsheets/d/e/<PUBLISHED_ID>/pubhtml
 // 2) Spreadsheet ID from editor URL like: /spreadsheets/d/<SPREADSHEET_ID>/edit#gid=...
 //
 // Keep whichever one you have, leave the other as ''.
-const SHEET_PUBLISHED_ID = '2PACX-1vSysRzt0QZeVpRqoroHMjvp0gD5p5ZmWUiYUEG7f2CNphd2d9ID087qQbzvjU-SYg';
+const SHEET_PUBLISHED_ID = (SHEET_CSV_URL.match(/\/spreadsheets\/d\/e\/([^/]+)/) || [])[1] || '';
 const SHEET_SPREADSHEET_ID = '';
 
 const SHEET_BASES = [
@@ -56,26 +60,44 @@ const SHEET_GIDS = {
 };
 
 function sheetURLsByGid(gid) {
-  // FORCE published CSV (most stable)
-  if (SHEET_PUBLISHED_ID) {
-    return [
-      `https://docs.google.com/spreadsheets/d/e/${SHEET_PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`
-    ];
+  const urls = [];
+
+  if (SHEET_CSV_URL) {
+    const csvUrl = new URL(SHEET_CSV_URL);
+    csvUrl.searchParams.set('output', 'csv');
+    csvUrl.searchParams.set('gid', gid);
+    csvUrl.searchParams.set('single', 'true');
+    urls.push(csvUrl.toString());
   }
 
+  // Published CSV by ID (most stable)
+  if (SHEET_PUBLISHED_ID) {
+    urls.push(`https://docs.google.com/spreadsheets/d/e/${SHEET_PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`);
+  }
+  if (urls.length) return [...new Set(urls)];
+  
   return SHEET_BASES.map(base =>
     `${base}?tqx=out:csv&gid=${gid}`
   );
 }
 
 function sheetURLsByName(sheetName) {
-  // ALWAYS use published CSV (no auth issues, no gviz issues)
-  if (SHEET_PUBLISHED_ID) {
-    return [
-      `https://docs.google.com/spreadsheets/d/e/${SHEET_PUBLISHED_ID}/pub?output=csv&sheet=${encodeURIComponent(sheetName)}`
-    ];
+  const urls = [];
+
+  if (SHEET_CSV_URL) {
+    const csvUrl = new URL(SHEET_CSV_URL);
+    csvUrl.searchParams.set('output', 'csv');
+    csvUrl.searchParams.set('sheet', sheetName);
+    urls.push(csvUrl.toString());
   }
 
+  // Published CSV by ID
+  if (SHEET_PUBLISHED_ID) {
+    urls.push(`https://docs.google.com/spreadsheets/d/e/${SHEET_PUBLISHED_ID}/pub?output=csv&sheet=${encodeURIComponent(sheetName)}`);
+  }
+
+  if (urls.length) return [...new Set(urls)];
+  
   return SHEET_BASES.map(base =>
     `${base}?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`
   );
