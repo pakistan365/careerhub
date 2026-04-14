@@ -25,8 +25,22 @@
 // common GID values (0–7 and 000000000–777777777 patterns).
 // ============================================================
 
-const SHEET_ID = '2PACX-1vSysRzt0QZeVpRqoroHMjvp0gD5p5ZmWUiYUEG7f2CNphd2d9ID087qQbzvjU-SYg';
-const SHEET_BASE = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID}/pub`;
+// You can use EITHER of these IDs:
+// 1) Published ID from URL like: /spreadsheets/d/e/<PUBLISHED_ID>/pubhtml
+// 2) Spreadsheet ID from editor URL like: /spreadsheets/d/<SPREADSHEET_ID>/edit#gid=...
+//
+// Keep whichever one you have, leave the other as ''.
+const SHEET_PUBLISHED_ID = '2PACX-1vSysRzt0QZeVpRqoroHMjvp0gD5p5ZmWUiYUEG7f2CNphd2d9ID087qQbzvjU-SYg';
+const SHEET_SPREADSHEET_ID = '';
+
+const SHEET_BASES = [
+  SHEET_PUBLISHED_ID ? `https://docs.google.com/spreadsheets/d/e/${SHEET_PUBLISHED_ID}/pub` : '',
+  SHEET_SPREADSHEET_ID ? `https://docs.google.com/spreadsheets/d/${SHEET_SPREADSHEET_ID}/gviz/tq` : '',
+].filter(Boolean);
+
+if (SHEET_BASES.length === 0) {
+  console.error('[CareerHub] Missing SHEET_PUBLISHED_ID or SHEET_SPREADSHEET_ID in js/google-sheet-loader.js');
+}
 
 // ── REPLACE THESE with your actual tab GIDs from the URL bar ─
 // Default values use sequential index (0-7) which works if you published all tabs.
@@ -41,12 +55,20 @@ const SHEET_GIDS = {
   Notifications: '7',   // 🔔 Notifications tab (8th tab = index 7)
 };
 
-function sheetURL(gid) {
-  return `${SHEET_BASE}?gid=${gid}&single=true&output=csv`;
+function sheetURLsByGid(gid) {
+  return SHEET_BASES.map(base =>
+    base.includes('/gviz/tq')
+      ? `${base}?tqx=out:csv&gid=${gid}`
+      : `${base}?gid=${gid}&single=true&output=csv`
+  );
 }
 
-function sheetURLByName(sheetName) {
-  return `${SHEET_BASE}?single=true&output=csv&sheet=${encodeURIComponent(sheetName)}`;
+function sheetURLsByName(sheetName) {
+  return SHEET_BASES.map(base =>
+    base.includes('/gviz/tq')
+      ? `${base}?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`
+      : `${base}?single=true&output=csv&sheet=${encodeURIComponent(sheetName)}`
+  );
 }
 
 // ── CSV Parser (handles quoted fields, commas inside values) ──
@@ -244,6 +266,14 @@ async function fetchCSV(url) {
   }
 }
 
+async function fetchFirstCSV(urls) {
+  for (const url of urls) {
+    const text = await fetchCSV(url);
+    if (text) return text;
+  }
+  return '';
+}
+
 // ── Auto-detect correct GID if the configured one fails ───────
 // Google Sheets GIDs can be 0–9 (sequential index) for most sheets,
 // or large random numbers. We try sequential first.
@@ -252,7 +282,7 @@ async function fetchTabWithFallback(tab) {
 
   // 1) Try sheet names first (works even when gids change)
   for (const alias of aliases) {
-    const textByName = await fetchCSV(sheetURLByName(alias));
+    const textByName = await fetchFirstCSV(sheetURLsByName(alias));
     if (textByName) {
       if (alias !== name) {
         console.info(`[CareerHub] "${name}" loaded using sheet name "${alias}".`);
@@ -262,13 +292,13 @@ async function fetchTabWithFallback(tab) {
   }
 
   // 2) Try configured GID
-  let text = await fetchCSV(sheetURL(gid));
+  let text = await fetchFirstCSV(sheetURLsByGid(gid));
   if (text) return text;
 
   // 3) Try alternate GIDs
   for (const altGid of alternateGids) {
     if (altGid === gid) continue;
-    text = await fetchCSV(sheetURL(altGid));
+    text = await fetchFirstCSV(sheetURLsByGid(altGid));
     if (text) {
       console.info(`[CareerHub] "${name}" found at gid=${altGid} (configured: ${gid})`);
       return text;
@@ -320,7 +350,7 @@ async function loadAllSheets() {
   showBanner('⏳ Loading live data…', 'linear-gradient(90deg,#0f766e,#0d9488)');
 
   // Tab config — each tab fetched independently using its own GID
-    const commonAlternateGids = ['0','1','2','3','4','5','6','7','8','9'];
+  const commonAlternateGids = ['0','1','2','3','4','5','6','7','8','9'];
   const tabs = [
     { name: 'Scholarships',  gid: SHEET_GIDS.Scholarships,  mapper: mapScholarship,  aliases: ['Scholarships', '🎓 Scholarships'], alternateGids: commonAlternateGids },
     { name: 'Jobs',          gid: SHEET_GIDS.Jobs,          mapper: mapJob,          aliases: ['Jobs', '💼 Jobs'], alternateGids: commonAlternateGids },
