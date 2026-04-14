@@ -444,8 +444,15 @@ window.sendChat = sendChat;
 window.quickAsk = quickAsk;
 window.toggleAIEnabled = toggleAIEnabled;
 
-document.addEventListener('DOMContentLoaded', () => {
+function initChatbot() {
   injectChatbotStyles();
   injectChatbot();
   setAIEnabled(isAIEnabled());
 });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initChatbot, { once: true });
+} else {
+  initChatbot();
+}
