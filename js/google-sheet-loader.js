@@ -45,6 +45,10 @@ function sheetURL(gid) {
   return `${SHEET_BASE}?gid=${gid}&single=true&output=csv`;
 }
 
+function sheetURLByName(sheetName) {
+  return `${SHEET_BASE}?single=true&output=csv&sheet=${encodeURIComponent(sheetName)}`;
+}
+
 // ── CSV Parser (handles quoted fields, commas inside values) ──
 function parseCSV(text) {
   const rows = [];
@@ -243,17 +247,30 @@ async function fetchCSV(url) {
 // ── Auto-detect correct GID if the configured one fails ───────
 // Google Sheets GIDs can be 0–9 (sequential index) for most sheets,
 // or large random numbers. We try sequential first.
-async function fetchTabWithFallback(name, configuredGid, alternateGids) {
-  // Try the configured GID first
-  let text = await fetchCSV(sheetURL(configuredGid));
+async function fetchTabWithFallback(tab) {
+  const { name, gid, aliases = [], alternateGids = [] } = tab;
+
+  // 1) Try sheet names first (works even when gids change)
+  for (const alias of aliases) {
+    const textByName = await fetchCSV(sheetURLByName(alias));
+    if (textByName) {
+      if (alias !== name) {
+        console.info(`[CareerHub] "${name}" loaded using sheet name "${alias}".`);
+      }
+      return textByName;
+    }
+  }
+
+  // 2) Try configured GID
+  let text = await fetchCSV(sheetURL(gid));
   if (text) return text;
 
-  // Try alternates
-  for (const gid of alternateGids) {
-    if (gid === configuredGid) continue;
-    text = await fetchCSV(sheetURL(gid));
+  // 3) Try alternate GIDs
+  for (const altGid of alternateGids) {
+    if (altGid === gid) continue;
+    text = await fetchCSV(sheetURL(altGid));
     if (text) {
-      console.info(`[CareerHub] "${name}" found at gid=${gid} (configured: ${configuredGid})`);
+      console.info(`[CareerHub] "${name}" found at gid=${altGid} (configured: ${gid})`);
       return text;
     }
   }
@@ -303,17 +320,18 @@ async function loadAllSheets() {
   showBanner('⏳ Loading live data…', 'linear-gradient(90deg,#0f766e,#0d9488)');
 
   // Tab config — each tab fetched independently using its own GID
+    const commonAlternateGids = ['0','1','2','3','4','5','6','7','8','9'];
   const tabs = [
-    { name: 'Scholarships',  gid: SHEET_GIDS.Scholarships,  mapper: mapScholarship },
-    { name: 'Jobs',          gid: SHEET_GIDS.Jobs,          mapper: mapJob },
-    { name: 'Internships',   gid: SHEET_GIDS.Internships,   mapper: mapInternship },
-    { name: 'Exams',         gid: SHEET_GIDS.Exams,         mapper: mapExam },
-    { name: 'Books',         gid: SHEET_GIDS.Books,         mapper: mapBook },
-    { name: 'Notifications', gid: SHEET_GIDS.Notifications, mapper: mapNotification },
+    { name: 'Scholarships',  gid: SHEET_GIDS.Scholarships,  mapper: mapScholarship,  aliases: ['Scholarships', '🎓 Scholarships'], alternateGids: commonAlternateGids },
+    { name: 'Jobs',          gid: SHEET_GIDS.Jobs,          mapper: mapJob,          aliases: ['Jobs', '💼 Jobs'], alternateGids: commonAlternateGids },
+    { name: 'Internships',   gid: SHEET_GIDS.Internships,   mapper: mapInternship,   aliases: ['Internships', '🚀 Internships'], alternateGids: commonAlternateGids },
+    { name: 'Exams',         gid: SHEET_GIDS.Exams,         mapper: mapExam,         aliases: ['Exams', '📋 Exams'], alternateGids: commonAlternateGids },
+    { name: 'Books',         gid: SHEET_GIDS.Books,         mapper: mapBook,         aliases: ['Books', '📚 Books'], alternateGids: commonAlternateGids },
+    { name: 'Notifications', gid: SHEET_GIDS.Notifications, mapper: mapNotification, aliases: ['Notifications', '🔔 Notifications'], alternateGids: commonAlternateGids },
   ];
 
   // Fetch all tabs in parallel — each gets its own CSV
-  const fetches = tabs.map(t => fetchCSV(sheetURL(t.gid)));
+  const fetches = tabs.map(t => fetchTabWithFallback(t));
   const results = await Promise.all(fetches);
 
   let loadedCount = 0;
