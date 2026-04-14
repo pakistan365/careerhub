@@ -34,19 +34,35 @@ Help users find opportunities, prepare for exams, build careers, and navigate Ca
 let chatHistory = [];
 let chatbotReady = false;
 
+function safeStorageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeStorageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage errors (private mode / blocked cookies).
+  }
+}
+
 function isAIEnabled() {
-  return localStorage.getItem(AI_ENABLED_KEY) !== '0';
+  return safeStorageGet(AI_ENABLED_KEY) !== '0';
 }
 
 function setAIEnabled(enabled) {
-  localStorage.setItem(AI_ENABLED_KEY, enabled ? '1' : '0');
+  return safeStorageGet(AI_ENABLED_KEY) !== '0';
   const launcher = document.getElementById('chatbotBtn');
   const panel = document.getElementById('chatbotPanel');
   const enableBtn = document.getElementById('chatbotEnableBtn');
 
   if (launcher) launcher.style.display = enabled ? 'flex' : 'none';
   if (panel && !enabled) panel.classList.remove('open');
-  if (enableBtn) enableBtn.style.display = enabled ? 'none' : 'flex';
+  if (enableBtn) enableBtn.style.display = enabled ? 'none' : 'inline-flex';
 }
 
 function toggleAIEnabled() {
@@ -189,13 +205,13 @@ async function submitFeedback(payload, actionsEl) {
   const record = { ...payload, ts: new Date().toISOString() };
   let stored = [];
   try {
-    stored = JSON.parse(localStorage.getItem(CHAT_FEEDBACK_KEY) || '[]');
+    stored = JSON.parse(safeStorageGet(CHAT_FEEDBACK_KEY) || '[]');
   } catch {
     stored = [];
   }
   stored.push(record);
-  localStorage.setItem(CHAT_FEEDBACK_KEY, JSON.stringify(stored.slice(-100)));
-
+  safeStorageSet(CHAT_FEEDBACK_KEY, JSON.stringify(stored.slice(-100)));
+  
   try {
     await fetch(FEEDBACK_ENDPOINT, {
       method: 'POST',
@@ -282,8 +298,9 @@ function injectChatbotStyles() {
       border: 1px solid #c7d2fe;
       background: #eef2ff; color: #4338ca;
       font-weight: 600; padding: 0 12px;
-      cursor: pointer; z-index: 9998;
+      cursor: pointer; z-index: 10001;
       display: none; align-items: center; justify-content: center;
+      box-shadow: 0 6px 16px rgba(67,56,202,0.25);    
     }
     .chatbot-toggle-btn {
       position: fixed; bottom: 90px; right: 20px;
@@ -422,6 +439,11 @@ function injectChatbotStyles() {
 }
 
 // ── Auto-init ────────────────────────────────────────────────
+window.toggleChatbot = toggleChatbot;
+window.sendChat = sendChat;
+window.quickAsk = quickAsk;
+window.toggle
+
 document.addEventListener('DOMContentLoaded', () => {
   injectChatbotStyles();
   injectChatbot();
