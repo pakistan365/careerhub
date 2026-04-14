@@ -4,6 +4,9 @@
 // ============================================================
 
 const CHAT_ENDPOINT = '/api/gemini-chat';
+const FEEDBACK_ENDPOINT = '/api/chat-feedback';
+const AI_ENABLED_KEY = 'ch_ai_enabled';
+const CHAT_FEEDBACK_KEY = 'ch_ai_feedback';
 
 // Build context from CMS data (safe — handles missing data)
 function buildContext() {
@@ -14,6 +17,9 @@ function buildContext() {
   const b = (d.Books || []).slice(0, 4).map(x => `- ${x.title} by ${x.author || 'Unknown'} (${x.exam_type || ''})`).join('\n');
   const i = (d.Internships || []).slice(0, 4).map(x => `- ${x.title} at ${x.organization || ''} (${x.stipend || 'N/A'}, ${x.location || ''})`).join('\n');
   return `You are CareerHub AI — a helpful assistant for CareerHub Pakistan. Help users find scholarships, jobs, internships, exam prep resources, and books. Be friendly, concise, and practical. Respond in the same language the user uses (Urdu or English).
+Before long answers, ask one short clarifying question if user intent is broad.
+Give answers in 3 parts: (1) best options, (2) why they match, (3) next step.
+Do not invent deadlines or links. If uncertain, clearly say data may be incomplete.
 
 Current CareerHub listings:
 SCHOLARSHIPS:\n${s || 'Loading…'}
@@ -28,8 +34,28 @@ Help users find opportunities, prepare for exams, build careers, and navigate Ca
 let chatHistory = [];
 let chatbotReady = false;
 
+function isAIEnabled() {
+  return localStorage.getItem(AI_ENABLED_KEY) !== '0';
+}
+
+function setAIEnabled(enabled) {
+  localStorage.setItem(AI_ENABLED_KEY, enabled ? '1' : '0');
+  const launcher = document.getElementById('chatbotBtn');
+  const panel = document.getElementById('chatbotPanel');
+  const enableBtn = document.getElementById('chatbotEnableBtn');
+
+  if (launcher) launcher.style.display = enabled ? 'flex' : 'none';
+  if (panel && !enabled) panel.classList.remove('open');
+  if (enableBtn) enableBtn.style.display = enabled ? 'none' : 'flex';
+}
+
+function toggleAIEnabled() {
+  setAIEnabled(!isAIEnabled());
+}
+
 // ── Toggle panel ─────────────────────────────────────────────
 function toggleChatbot() {
+  if (!isAIEnabled()) return;
   const panel = document.getElementById('chatbotPanel');
   const btn   = document.getElementById('chatbotBtn');
   if (!panel) return;
@@ -85,7 +111,7 @@ async function sendChat() {
       chatHistory.pop();
     } else if (data.reply) {
       chatHistory.push({ role: 'model', parts: [{ text: data.reply }] });
-      appendBotMessage(formatBotReply(data.reply));
+      appendBotMessage(formatBotReply(data.reply), data.reply);
     } else {
       appendBotMessage('Sorry, no response received. Please try again.');
     }
@@ -125,14 +151,60 @@ function appendUserMessage(text) {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
-function appendBotMessage(html) {
+function appendBotMessage(html, rawText) {
   const msgs = document.getElementById('chatbotMessages');
   if (!msgs) return;
   const div = document.createElement('div');
   div.className = 'chat-msg bot';
   div.innerHTML = html;
+  
+  if (rawText) {
+    const feedbackId = `fb-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const actions = document.createElement('div');
+    actions.className = 'chat-msg-actions';
+    actions.innerHTML = `
+      <button class="chat-feedback-btn" data-score="1" aria-label="Helpful">👍 Helpful</button>
+      <button class="chat-feedback-btn" data-score="-1" aria-label="Not helpful">👎 Improve</button>`;
+    actions.querySelectorAll('.chat-feedback-btn').forEach(btn => {
+      btn.addEventListener('click', () => submitFeedback({
+        id: feedbackId,
+        score: Number(btn.dataset.score),
+        answer: rawText,
+        question: chatHistory.filter(x => x.role === 'user').slice(-1)[0]?.parts?.[0]?.text || '',
+        page: location.pathname
+      }, actions));
+    });
+    div.appendChild(actions);
+  }
+  
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
+}
+
+async function submitFeedback(payload, actionsEl) {
+  if (actionsEl) {
+    actionsEl.querySelectorAll('button').forEach(btn => btn.disabled = true);
+  }
+
+  const record = { ...payload, ts: new Date().toISOString() };
+  let stored = [];
+  try {
+    stored = JSON.parse(localStorage.getItem(CHAT_FEEDBACK_KEY) || '[]');
+  } catch {
+    stored = [];
+  }
+  stored.push(record);
+  localStorage.setItem(CHAT_FEEDBACK_KEY, JSON.stringify(stored.slice(-100)));
+
+  try {
+    await fetch(FEEDBACK_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record)
+    });
+  } catch (err) {
+    console.warn('[ChatBot] feedback submit failed:', err);
+  }
 }
 
 function appendTyping() {
@@ -157,6 +229,9 @@ function injectChatbot() {
   if (document.getElementById('chatbotPanel')) return;
 
   document.body.insertAdjacentHTML('beforeend', `
+    <button class="chatbot-enable-btn" id="chatbotEnableBtn" onclick="toggleAIEnabled()" aria-label="Enable AI Adviser" title="Enable AI Adviser">
+    🤖 Enable AI
+  </button>
   <button class="chatbot-toggle-btn" id="chatbotBtn" onclick="toggleChatbot()" aria-label="Open AI Chat" title="CareerHub AI">
     <svg class="chat-icon-open" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     <svg class="chat-icon-close" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -189,6 +264,9 @@ function injectChatbot() {
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>
+        <div class="chatbot-footer">
+      <button class="chatbot-mini-link" onclick="toggleAIEnabled()">Hide AI on this device</button>
+    </div>
   </div>`);
 }
 
@@ -198,6 +276,15 @@ function injectChatbotStyles() {
   const style = document.createElement('style');
   style.id = 'chatbot-styles';
   style.textContent = `
+      .chatbot-enable-btn {
+      position: fixed; bottom: 90px; right: 20px;
+      height: 40px; border-radius: 999px;
+      border: 1px solid #c7d2fe;
+      background: #eef2ff; color: #4338ca;
+      font-weight: 600; padding: 0 12px;
+      cursor: pointer; z-index: 9998;
+      display: none; align-items: center; justify-content: center;
+    }
     .chatbot-toggle-btn {
       position: fixed; bottom: 90px; right: 20px;
       width: 56px; height: 56px; border-radius: 50%;
@@ -262,6 +349,13 @@ function injectChatbotStyles() {
       box-shadow: 0 1px 6px rgba(0,0,0,0.08);
     }
     .chat-msg.bot a { color: #6366f1; text-decoration: underline; }
+        .chat-msg-actions { margin-top: 8px; display: flex; gap: 6px; }
+    .chat-feedback-btn {
+      border: 1px solid #d1d5db; background: #fff;
+      border-radius: 999px; padding: 3px 10px; font-size: 0.72rem;
+      cursor: pointer;
+    }
+    .chat-feedback-btn:disabled { opacity: 0.65; cursor: default; }
     .chat-msg.typing { display: flex; align-items: center; gap: 5px; padding: 14px; }
     .dot { width: 7px; height: 7px; background: #6366f1; border-radius: 50%; animation: dotBounce 1.2s infinite; }
     .dot:nth-child(2) { animation-delay: 0.2s; }
@@ -301,9 +395,19 @@ function injectChatbotStyles() {
       transition: transform 0.2s, box-shadow 0.2s;
     }
     .chatbot-send-btn:hover { transform: scale(1.1); box-shadow: 0 4px 12px rgba(99,102,241,0.4); }
+        .chatbot-footer {
+      border-top: 1px solid var(--border, #e5e7eb);
+      padding: 7px 12px; display: flex; justify-content: center;
+      background: var(--bg-main, #f8fafc);
+    }
+    .chatbot-mini-link {
+      background: transparent; border: none; color: #6b7280;
+      font-size: 0.72rem; cursor: pointer; text-decoration: underline;
+    }
     @media (max-width: 480px) {
       .chatbot-panel { width: calc(100vw - 24px); right: 12px; bottom: 130px; max-height: 70vh; }
       .chatbot-toggle-btn { bottom: 76px; right: 12px; }
+      .chatbot-enable-btn { right: 12px; bottom: 76px; }
     }
     body.dark .chatbot-panel { background: #1e1e2e; border-color: #374151; }
     body.dark .chatbot-messages { background: #181825; }
@@ -321,4 +425,5 @@ function injectChatbotStyles() {
 document.addEventListener('DOMContentLoaded', () => {
   injectChatbotStyles();
   injectChatbot();
+    setAIEnabled(isAIEnabled());
 });
