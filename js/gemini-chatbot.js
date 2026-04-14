@@ -7,6 +7,7 @@ const CHAT_ENDPOINT = '/api/gemini-chat';
 const FEEDBACK_ENDPOINT = '/api/chat-feedback';
 const AI_ENABLED_KEY = 'ch_ai_enabled';
 const CHAT_FEEDBACK_KEY = 'ch_ai_feedback';
+const CHAT_MEMORY_KEY = 'ch_ai_memory';
 
 // Build context from CMS data (safe — handles missing data)
 function buildContext() {
@@ -16,10 +17,12 @@ function buildContext() {
   const e = (d.Exams || []).slice(0, 4).map(x => `- ${x.title} (${x.exam_type || ''}, date: ${x.test_date || 'TBD'})`).join('\n');
   const b = (d.Books || []).slice(0, 4).map(x => `- ${x.title} by ${x.author || 'Unknown'} (${x.exam_type || ''})`).join('\n');
   const i = (d.Internships || []).slice(0, 4).map(x => `- ${x.title} at ${x.organization || ''} (${x.stipend || 'N/A'}, ${x.location || ''})`).join('\n');
+  const memory = getMemoryContext();
   return `You are CareerHub AI — a helpful assistant for CareerHub Pakistan. Help users find scholarships, jobs, internships, exam prep resources, and books. Be friendly, concise, and practical. Respond in the same language the user uses (Urdu or English).
 Before long answers, ask one short clarifying question if user intent is broad.
 Give answers in 3 parts: (1) best options, (2) why they match, (3) next step.
 Do not invent deadlines or links. If uncertain, clearly say data may be incomplete.
+When relevant, recommend CareerHub internal pages directly using site links provided in prompt.
 
 Current CareerHub listings:
 SCHOLARSHIPS:\n${s || 'Loading…'}
@@ -27,6 +30,8 @@ JOBS:\n${j || 'Loading…'}
 EXAMS:\n${e || 'Loading…'}
 BOOKS:\n${b || 'Loading…'}
 INTERNSHIPS:\n${i || 'Loading…'}
+
+Learned user preference memory (recent interactions):\n${memory}
 
 Help users find opportunities, prepare for exams, build careers, and navigate CareerHub.`;
 }
@@ -48,6 +53,78 @@ function safeStorageSet(key, value) {
   } catch {
     // Ignore storage errors (private mode / blocked cookies).
   }
+}
+
+function loadMemory() {
+  try {
+    const parsed = JSON.parse(safeStorageGet(CHAT_MEMORY_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMemory(memory) {
+  safeStorageSet(CHAT_MEMORY_KEY, JSON.stringify(memory.slice(-25)));
+}
+
+function storeMemory(question, answer, helpfulScore = 0) {
+  if (!question || !answer) return;
+  const memory = loadMemory();
+  memory.push({
+    q: String(question).slice(0, 220),
+    a: String(answer).slice(0, 320),
+    helpfulScore,
+    ts: new Date().toISOString()
+  });
+  saveMemory(memory);
+}
+
+function getMemoryContext() {
+  const memory = loadMemory();
+  if (!memory.length) return 'No saved user preferences yet.';
+
+  return memory
+    .sort((a, b) => (b.helpfulScore || 0) - (a.helpfulScore || 0))
+    .slice(0, 8)
+    .map(m => `- Q: ${m.q}\n  Preferred style hint: ${m.helpfulScore > 0 ? 'User marked as helpful.' : 'Neutral memory.'}\n  A: ${m.a}`)
+    .join('\n');
+}
+
+const CAREERHUB_LINKS = [
+  { slug: 'scholarships', keywords: ['scholarship', 'funded', 'hec', 'financial aid', 'bursary'], label: 'Scholarships', url: '/scholarships.html' },
+  { slug: 'national-scholarships', keywords: ['pakistan scholarship', 'local scholarship', 'national'], label: 'National Scholarships', url: '/scholarships-national.html' },
+  { slug: 'international-scholarships', keywords: ['abroad', 'international scholarship', 'study abroad', 'foreign university'], label: 'International Scholarships', url: '/scholarships-international.html' },
+  { slug: 'jobs', keywords: ['job', 'career', 'vacancy', 'hiring'], label: 'All Jobs', url: '/jobs.html' },
+  { slug: 'government-jobs', keywords: ['government', 'fpsc', 'ppsc', 'public sector', 'govt'], label: 'Government Jobs', url: '/jobs-government.html' },
+  { slug: 'private-jobs', keywords: ['private', 'ngo', 'company'], label: 'Private / NGO Jobs', url: '/jobs-private.html' },
+  { slug: 'internships', keywords: ['internship', 'intern', 'trainee'], label: 'Internships', url: '/internships.html' },
+  { slug: 'exams', keywords: ['exam', 'test prep', 'syllabus', 'entry test'], label: 'Exams Hub', url: '/exams.html' },
+  { slug: 'mdcat', keywords: ['mdcat', 'medical entry test', 'pre-medical'], label: 'MDCAT Guide', url: '/exams-mdcat.html' },
+  { slug: 'css', keywords: ['css exam', 'civil service'], label: 'CSS Guide', url: '/exams-css.html' },
+  { slug: 'books', keywords: ['book', 'pdf', 'notes', 'past papers'], label: 'Books', url: '/books.html' },
+  { slug: 'resume', keywords: ['cv', 'resume', 'portfolio'], label: 'Resume Builder', url: '/resume-builder.html' }
+];
+
+function getRelevantLinks(queryText) {
+  const query = (queryText || '').toLowerCase();
+  const matches = CAREERHUB_LINKS
+    .map(link => {
+      const score = link.keywords.reduce((acc, keyword) => acc + (query.includes(keyword) ? 1 : 0), 0);
+      return { ...link, score };
+    })
+    .filter(link => link.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
+
+  if (matches.length) return matches;
+  return CAREERHUB_LINKS.slice(0, 3);
+}
+
+function formatUsefulLinks(links) {
+  if (!links.length) return '';
+  const list = links.map(link => `• <a href="${link.url}">${link.label}</a>`).join('<br>');
+  return `<div class="chat-useful-links"><strong>Useful CareerHub links:</strong><br>${list}</div>`;
 }
 
 function isAIEnabled() {
@@ -106,7 +183,7 @@ async function sendChat() {
 
   try {
     const payload = {
-      system_instruction: { parts: [{ text: buildContext() }] },
+       system_instruction: { parts: [{ text: `${buildContext()}\n\nRelevant internal pages for this query:\n${usefulLinks.map(link => `- ${link.label}: ${link.url}`).join('\n')}` }] },
       contents: chatHistory.map(m => ({ role: m.role, parts: m.parts })),
       generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
     };
@@ -127,7 +204,8 @@ async function sendChat() {
       chatHistory.pop();
     } else if (data.reply) {
       chatHistory.push({ role: 'model', parts: [{ text: data.reply }] });
-      appendBotMessage(formatBotReply(data.reply), data.reply);
+      appendBotMessage(`${formatBotReply(data.reply)}${formatUsefulLinks(usefulLinks)}`, data.reply);
+      storeMemory(text, data.reply, 0);
     } else {
       appendBotMessage('Sorry, no response received. Please try again.');
     }
@@ -210,7 +288,7 @@ async function submitFeedback(payload, actionsEl) {
     stored = [];
   }
   stored.push(record);
-  safeStorageSet(CHAT_FEEDBACK_KEY, JSON.stringify(stored.slice(-100)));
+  storeMemory(payload.question, payload.answer, payload.score);
   
   try {
     await fetch(FEEDBACK_ENDPOINT, {
@@ -318,14 +396,29 @@ function injectChatbotStyles() {
     }
     .chatbot-toggle-btn {
       position: fixed; bottom: 90px; right: 20px;
-      width: 56px; height: 56px; border-radius: 50%;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      color: white; border: none; cursor: pointer;
-      box-shadow: 0 4px 20px rgba(99,102,241,0.5);
+      width: 64px; height: 64px; border-radius: 20px;
+      background: linear-gradient(145deg, #4f46e5, #7c3aed);
+      color: white; border: 1px solid rgba(255,255,255,0.35); cursor: pointer;
+      box-shadow: 0 10px 30px rgba(79,70,229,0.45);
       z-index: 9998; display: flex; align-items: center; justify-content: center;
       transition: transform 0.3s, box-shadow 0.3s;
+            transition: transform 0.3s, box-shadow 0.3s, border-radius 0.25s ease;
     }
-    .chatbot-toggle-btn:hover { transform: scale(1.1); box-shadow: 0 6px 28px rgba(99,102,241,0.7); }
+    .chatbot-toggle-btn::before {
+      content: '';
+      position: absolute;
+      inset: -5px;
+      border-radius: 24px;
+      border: 2px solid rgba(99, 102, 241, 0.35);
+      animation: chatbotPulse 2s infinite;
+    }
+    .chatbot-toggle-btn:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 14px 34px rgba(99,102,241,0.58); border-radius: 18px; }
+    .chatbot-toggle-btn.open { border-radius: 16px; }
+    @keyframes chatbotPulse {
+      0% { transform: scale(0.95); opacity: 0.65; }
+      70% { transform: scale(1.08); opacity: 0; }
+      100% { transform: scale(1.08); opacity: 0; }
+    }
     .chat-icon-close { display: none; }
     .chatbot-toggle-btn.open .chat-icon-open { display: none; }
     .chatbot-toggle-btn.open .chat-icon-close { display: block; }
@@ -333,6 +426,13 @@ function injectChatbotStyles() {
       position: absolute; top: -4px; right: -4px;
       background: #f59e0b; color: #000; font-size: 0.55rem;
       font-weight: 700; padding: 2px 5px; border-radius: 99px;
+    }
+        .chat-useful-links {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--border, #d1d5db);
+      font-size: 0.78rem;
+      line-height: 1.5;
     }
     .chatbot-panel {
       position: fixed; bottom: 158px; right: 20px;
@@ -437,7 +537,7 @@ function injectChatbotStyles() {
     }
     @media (max-width: 480px) {
       .chatbot-panel { width: calc(100vw - 24px); right: 12px; bottom: 130px; max-height: 70vh; }
-      .chatbot-toggle-btn { bottom: 76px; right: 12px; }
+      .chatbot-toggle-btn { bottom: 76px; right: 12px; width: 58px; height: 58px; border-radius: 18px; }
       .chatbot-enable-btn { right: 12px; bottom: 76px; }
     }
     body.dark .chatbot-panel { background: #1e1e2e; border-color: #374151; }
