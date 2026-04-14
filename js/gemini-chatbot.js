@@ -55,7 +55,7 @@ function isAIEnabled() {
 }
 
 function setAIEnabled(enabled) {
-  return safeStorageGet(AI_ENABLED_KEY) !== '0';
+  safeStorageSet(AI_ENABLED_KEY, enabled ? '1' : '0');
   const launcher = document.getElementById('chatbotBtn');
   const panel = document.getElementById('chatbotPanel');
   const enableBtn = document.getElementById('chatbotEnableBtn');
@@ -442,10 +442,10 @@ function injectChatbotStyles() {
 window.toggleChatbot = toggleChatbot;
 window.sendChat = sendChat;
 window.quickAsk = quickAsk;
-window.toggle
+window.toggleAIEnabled = toggleAIEnabled;
 
 document.addEventListener('DOMContentLoaded', () => {
   injectChatbotStyles();
   injectChatbot();
-    setAIEnabled(isAIEnabled());
+  setAIEnabled(isAIEnabled());
 });
